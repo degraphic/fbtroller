@@ -1,0 +1,15 @@
+<!--Change the total storage limit for all queues to 50MB-->
+<queue-entries>
+  <total-storage-limit>50M</total-storage-limit>
+  <queue>
+    <name>timeline-feeder</name>
+    <rate>5/s</rate>
+    <bucket-size>10</bucket-size>
+  </queue>
+  <queue>
+    <name>timeline-map</name>
+    <rate>20/s</rate>
+    <bucket-size>40</bucket-size>
+  </queue>
+  
+</queue-entries>
