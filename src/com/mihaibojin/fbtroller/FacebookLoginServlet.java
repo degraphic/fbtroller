@@ -11,13 +11,12 @@ import com.google.appengine.api.datastore.DatastoreService;
 import com.google.appengine.api.datastore.DatastoreServiceFactory;
 import com.google.appengine.api.datastore.Entity;
 import com.google.appengine.api.datastore.EntityNotFoundException;
-import com.google.appengine.api.datastore.FetchOptions;
 import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
-import com.google.appengine.api.datastore.Query;
 import com.google.appengine.api.datastore.Transaction;
 import com.google.appengine.api.taskqueue.Queue;
 import com.google.appengine.api.taskqueue.QueueFactory;
+import com.google.appengine.api.taskqueue.TaskOptions.Method;
 import com.restfb.DefaultFacebookClient;
 import com.restfb.FacebookClient;
 import com.restfb.exception.FacebookException;
@@ -67,7 +66,7 @@ public class FacebookLoginServlet extends HttpServlet {
 					try {
 						// try to find user in database
 				        Key usersKey = KeyFactory.createKey(EntityKey, uKey);
-						Entity a = datastore.get(usersKey);
+						datastore.get(usersKey);
 						
 						datastore.delete(usersKey);
 					} catch (EntityNotFoundException e) {
@@ -87,7 +86,7 @@ public class FacebookLoginServlet extends HttpServlet {
 				}
 		        
 				Queue queue = QueueFactory.getDefaultQueue();
-			    queue.add(withUrl("/map-timeline").param("key", uKey));
+			    queue.add(withUrl("/map-timeline").param("key", uKey).method(Method.GET));
 			    
 				resp.getWriter().println("{\"result\": \"ok\"}");
 				return;

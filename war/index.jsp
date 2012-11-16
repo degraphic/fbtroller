@@ -4,7 +4,9 @@
 <%@ page import="com.google.appengine.api.users.UserService" %>
 <%@ page import="com.google.appengine.api.users.UserServiceFactory" %>
 <%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
-
+<%
+	String perms = "email,user_photos,user_location,user_videos,publish_actions,user_actions.news,user_status,user_relationships,user_birthday,user_likes,friends_photos,friends_birthday,friends_relationships,friends_likes,user_subscriptions,friends_groups,friends_relationships,friends_activities,friends_location,friends_videos,friends_status,photo_upload,read_friendlists,manage_friendlists,publish_stream,read_stream,read_insights";
+%>
 <html>
   <head>
 	<link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/css/bootstrap-combined.min.css" rel="stylesheet">
@@ -17,7 +19,7 @@
 
   <body>
 	<div id="fb-root"></div>
-	<fb:login-button autologoutlink="true" perms="user_likes" size="large"></fb:login-button>
+	<fb:login-button autologoutlink="true" perms="<%= perms %>" size="large"></fb:login-button>
 
 	<script>
 	  window.fbAsyncInit = function() {
@@ -44,7 +46,7 @@
 	    }
 	    
 	    // get current login status
-		FB.getLoginStatus(sendAccessToken, {scope: 'email,user_photos,user_location,user_videos,publish_actions,user_actions.news,user_status,user_relationships,user_birthday,user_likes,friends_photos,friends_birthday,friends_relationships,friends_likes,user_subscriptions,friends_groups,friends_relationships,friends_activities,friends_location,friends_videos,friends_status,photo_upload,read_friendlists,manage_friendlists,offline_access,publish_stream'});
+		FB.getLoginStatus(sendAccessToken, {scope: '<%=perms%>'});
 		
 		// logout event
 		FB.Event.subscribe('auth.logout',

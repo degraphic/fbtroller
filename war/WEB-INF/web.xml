@@ -4,11 +4,11 @@
 		<servlet-class>com.mihaibojin.fbtroller.FacebookLoginServlet</servlet-class>
 	</servlet>
 	<servlet>
-		<servlet-name>MapTimelineIntervalServlet</servlet-name>
-		<servlet-class>com.mihaibojin.fbtroller.MapTimelineIntervalServletServlet</servlet-class>
+		<servlet-name>MapTimelineInterval</servlet-name>
+		<servlet-class>com.mihaibojin.fbtroller.MapTimelineIntervalServlet</servlet-class>
 	</servlet>
 	<servlet>
-		<servlet-name>TimelineSpiderServlet</servlet-name>
+		<servlet-name>TimelineSpider</servlet-name>
 		<servlet-class>com.mihaibojin.fbtroller.TimelineSpiderServlet</servlet-class>
 	</servlet>
 
@@ -17,11 +17,11 @@
 		<url-pattern>/login</url-pattern>
 	</servlet-mapping>
 	<servlet-mapping>
-		<servlet-name>MapTimelineIntervalServlet</servlet-name>
+		<servlet-name>MapTimelineInterval</servlet-name>
 		<url-pattern>/map-timeline</url-pattern>
 	</servlet-mapping>
 	<servlet-mapping>
-		<servlet-name>TimelineSpiderServlet</servlet-name>
+		<servlet-name>TimelineSpider</servlet-name>
 		<url-pattern>/timeline-spider</url-pattern>
 	</servlet-mapping>
 	

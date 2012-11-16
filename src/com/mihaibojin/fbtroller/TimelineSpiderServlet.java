@@ -10,7 +10,6 @@ import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
 import com.mihaibojin.model.Results;
 import com.restfb.DefaultFacebookClient;
-import com.restfb.DefaultJsonMapper;
 import com.restfb.FacebookClient;
 import com.restfb.json.JsonObject;
 
