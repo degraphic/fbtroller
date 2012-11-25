@@ -5,6 +5,7 @@ import static com.google.appengine.api.taskqueue.TaskOptions.Builder.withUrl;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.servlet.http.*;
@@ -17,11 +18,15 @@ import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
 import com.google.appengine.api.datastore.Text;
 import com.google.appengine.api.datastore.Transaction;
+import com.google.appengine.api.memcache.ErrorHandlers;
+import com.google.appengine.api.memcache.MemcacheService;
+import com.google.appengine.api.memcache.MemcacheServiceFactory;
 import com.google.appengine.api.taskqueue.Queue;
 import com.google.appengine.api.taskqueue.QueueFactory;
 import com.google.appengine.api.taskqueue.TaskOptions.Method;
 import com.restfb.DefaultFacebookClient;
 import com.restfb.FacebookClient;
+import com.restfb.exception.FacebookOAuthException;
 import com.restfb.exception.FacebookResponseStatusException;
 import com.restfb.json.JsonObject;
 
@@ -87,9 +92,19 @@ public class TimelineSpiderServlet extends HttpServlet {
 		Long startTime = Long.valueOf(req.getParameter("startTime"));
 		Long queryTime = (new java.util.Date()).getTime();
 
+		// check if access_token is allowed to run
+		MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
+		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
+		String key = "token_" + access_token;
+	    byte[] value = (byte[]) syncCache.get(key); // read from cache
+	    if (value == null) {
+	    	// access_token is not valid anymore; stop execution
+			resp.setContentType("application/json");
+			resp.getWriter().println("{\"result\": \"access_token error\"}");
+			return;
+	    }	
 
 		String query = String.format("SELECT post_id, app_id, app_data, attachment, impressions, place, tagged_ids, message_tags, attribution, filter_key, attribution, action_links, message, permalink, type, created_time, actor_id, target_id, privacy, description, description_tags, comments, likes FROM stream WHERE source_id=me() AND created_time >= %s AND created_time <= %s LIMIT 500", String.valueOf(startTime), String.valueOf(endTime));
-		
 		List<JsonObject> queryResults = null;
 		try {
 			queryResults = facebookClient.executeQuery(query, JsonObject.class);
@@ -97,6 +112,13 @@ public class TimelineSpiderServlet extends HttpServlet {
 			
 		} catch (FacebookResponseStatusException e) {
 			log.severe(String.format("Facebook exception for %d - %d: %s", startTime, endTime, e.getMessage()));
+			
+		} catch (FacebookOAuthException e) {
+			// query failed
+			if (190 == e.getErrorCode()) {
+				// remove access_token from memcache, preventing jobs to run
+			    syncCache.delete(key);
+			}			
 		}
 
 		// if query failed, do not proceed with saving to datastore

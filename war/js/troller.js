@@ -15,6 +15,19 @@ var Troller = function($, FB, fbProxy, perms) {
 	});
     }
 
+    // send logout event to server
+    self.logout = function(access_token, cb) {
+	$.ajax({
+	    url : '/login',
+	    data : {
+		token : access_token,
+		logout: 1
+	    },
+	    success : cb,
+	    dataType : 'json'
+	});
+    }
+
     // send token to server and get back response
     self.getData = function(access_token, cb) {
 	$.ajax({
@@ -42,14 +55,15 @@ var Troller = function($, FB, fbProxy, perms) {
     var setLogin = function () {
 	$("#login_user a").attr("href", "#").html("stranger");
 	$("#login").html("Login");
-	$("#reload").addClass("disabled");
+	$("#reload").removeAttr("access_token").addClass("disabled");
     }
     
     // sets correct button labels and links for logout
-    var setLogout = function (uid, name) {
-	$("#login_user a").attr("href", "http://www.facebook.com/" + uid).html(name);
+    var setLogout = function (uid, name, access_token) {
+	$("#login_user a").attr("href", "http://www.facebook.com/" + uid)
+			  .html(name);
 	$("#login").html("Logout");
-	$("#reload").removeClass("disabled");
+	$("#reload").attr("access_token", access_token).removeClass("disabled");
     }
     
     // bind buttons actions
@@ -58,7 +72,7 @@ var Troller = function($, FB, fbProxy, perms) {
             //if logged in, do logout
             if (accessToken) {
         	FB.api('/me', function(response) {
-        	    setLogout(response.id, response.first_name);
+        	    setLogout(response.id, response.first_name, accessToken);
         	});
         	
             } else {
@@ -72,8 +86,12 @@ var Troller = function($, FB, fbProxy, perms) {
 	    fbProxy.isLoggedIn(function (accessToken) {
 		//if logged in, do logout
 		if (accessToken) {
-		    FB.logout(function(response) {
-			setLogout();
+		    
+		    // logout from server first
+		    self.logout(accessToken, function () {
+			FB.logout(function(response) {
+			    setLogout();
+			});
 		    });
 			
 		//if not logged in
@@ -90,6 +108,12 @@ var Troller = function($, FB, fbProxy, perms) {
 		    }, {scope : perms});
 		}		
 	    })
+	});
+	
+	// bind reload button
+	$("#reload").click(function () {
+	    var token = $(this).attr("access_token");
+	    self.sendToken(token, self.logger);	    
 	});
     }
         

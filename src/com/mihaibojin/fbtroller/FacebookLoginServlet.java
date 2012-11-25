@@ -3,6 +3,7 @@ package com.mihaibojin.fbtroller;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.servlet.http.*;
@@ -14,6 +15,9 @@ import com.google.appengine.api.datastore.EntityNotFoundException;
 import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
 import com.google.appengine.api.datastore.Transaction;
+import com.google.appengine.api.memcache.ErrorHandlers;
+import com.google.appengine.api.memcache.MemcacheService;
+import com.google.appengine.api.memcache.MemcacheServiceFactory;
 import com.google.appengine.api.taskqueue.Queue;
 import com.google.appengine.api.taskqueue.QueueFactory;
 import com.google.appengine.api.taskqueue.TaskOptions.Method;
@@ -26,12 +30,40 @@ import static com.google.appengine.api.taskqueue.TaskOptions.Builder.*;
 @SuppressWarnings("serial")
 public class FacebookLoginServlet extends HttpServlet {
 	private String access_token;
+	private String logout;
 	FacebookClient facebookClient;
 	private final String EntityKey = "Users";
 	private static final Logger log = Logger.getLogger(FacebookLoginServlet.class.getName());
 	
+	private void logout()
+	{
+		// if query executed, access_token is valid
+		MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
+		String key = "token_" + access_token;
+		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
+	    syncCache.delete(key);
+	}
+	
+	private void login()
+	{
+		// if query executed, access_token is valid
+		MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
+		String key = "token_" + access_token;
+		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
+	    byte[] value = (byte[]) syncCache.get(key); // read from cache
+	    value = "1".getBytes();
+	    syncCache.put(key, value); // populate cache
+	    if (value == null) {
+	      // get value from other source
+	      // ........
+
+	      syncCache.put(key, value); // populate cache
+	    }		
+	}
+	
 	public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
 		access_token = req.getParameter("token");
+		logout = req.getParameter("logout");
 		
 		try {
 			facebookClient = new DefaultFacebookClient(access_token);		
@@ -40,6 +72,8 @@ public class FacebookLoginServlet extends HttpServlet {
 			String query = "SELECT uid, username, pic_square, birthday_date, sex, name FROM user WHERE uid=me()";
 			List<JsonObject> queryResults = facebookClient.executeQuery(query, JsonObject.class);
 
+
+			
 			if ( 0 < queryResults.size() ) {
 				JsonObject u = queryResults.get(0);
 				
