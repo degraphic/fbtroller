@@ -46,7 +46,7 @@ public class DataServlet extends HttpServlet {
 
 		// Get limit / set default limit to 10
 		String limit = req.getParameter("limit");
-		if (null == limit || Integer.valueOf(limit) > 50) {
+		if (null == limit || Integer.valueOf(limit) > 500) {
 			limit = "10";
 		}
 
