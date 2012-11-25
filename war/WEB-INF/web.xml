@@ -4,6 +4,10 @@
 		<servlet-class>com.mihaibojin.fbtroller.FacebookLoginServlet</servlet-class>
 	</servlet>
 	<servlet>
+		<servlet-name>Data</servlet-name>
+		<servlet-class>com.mihaibojin.fbtroller.DataServlet</servlet-class>
+	</servlet>
+		<servlet>
 		<servlet-name>MapTimelineInterval</servlet-name>
 		<servlet-class>com.mihaibojin.fbtroller.MapTimelineIntervalServlet</servlet-class>
 	</servlet>
@@ -17,6 +21,10 @@
 		<url-pattern>/login</url-pattern>
 	</servlet-mapping>
 	<servlet-mapping>
+		<servlet-name>Data</servlet-name>
+		<url-pattern>/data</url-pattern>
+	</servlet-mapping>
+		<servlet-mapping>
 		<servlet-name>MapTimelineInterval</servlet-name>
 		<url-pattern>/map-timeline</url-pattern>
 	</servlet-mapping>

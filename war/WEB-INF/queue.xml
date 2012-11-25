@@ -8,8 +8,8 @@
   </queue>
   <queue>
     <name>timeline-map</name>
-    <rate>20/s</rate>
-    <bucket-size>40</bucket-size>
+    <rate>1/s</rate>
+    <bucket-size>10</bucket-size>
   </queue>
   
 </queue-entries>

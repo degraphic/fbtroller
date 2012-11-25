@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<datastore-indexes autoGenerate="true">
+    <datastore-index kind="Posts" ancestor="false">
+        <property name="uid" direction="asc" />
+        <property name="post_id" direction="asc" />
+        <property name="created_time" direction="asc" />
+    </datastore-index>
+</datastore-indexes>

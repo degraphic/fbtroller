@@ -31,8 +31,6 @@ public class FacebookLoginServlet extends HttpServlet {
 	private static final Logger log = Logger.getLogger(FacebookLoginServlet.class.getName());
 	
 	public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-		resp.setContentType("application/json");
-		
 		access_token = req.getParameter("token");
 		
 		try {
@@ -85,17 +83,19 @@ public class FacebookLoginServlet extends HttpServlet {
 				    }
 				}
 		        
-				Queue queue = QueueFactory.getDefaultQueue();
+				// add user data requests to queue
+				Queue queue = QueueFactory.getQueue("timeline-feeder");
 			    queue.add(withUrl("/map-timeline").param("key", uKey).method(Method.GET));
 			    
+			    // correct response
+				resp.setContentType("application/json");
 				resp.getWriter().println("{\"result\": \"ok\"}");
-				return;
 			}
 		} catch (FacebookException e) {
-			
+			// error
+			resp.setContentType("application/json");
+			resp.getWriter().println("{\"result\": \"error\", \"message\": \"Could not retrieve Facebook user data!\"}");
 		}
-		
-		resp.getWriter().println("{\"result\": \"error\", \"message\": \"Could not retrieve Facebook user data!\"}");
 	}
 
 }

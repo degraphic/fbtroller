@@ -1,26 +1,72 @@
-<%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<%@ page import="java.util.List" %>
-<%@ page import="com.google.appengine.api.users.User" %>
-<%@ page import="com.google.appengine.api.users.UserService" %>
-<%@ page import="com.google.appengine.api.users.UserServiceFactory" %>
-<%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
-<%
-	String perms = "email,user_photos,user_location,user_videos,publish_actions,user_actions.news,user_status,user_relationships,user_birthday,user_likes,friends_photos,friends_birthday,friends_relationships,friends_likes,user_subscriptions,friends_groups,friends_relationships,friends_activities,friends_location,friends_videos,friends_status,photo_upload,read_friendlists,manage_friendlists,publish_stream,read_stream,read_insights";
-%>
+<!DOCTYPE html>
 <html>
   <head>
-	<link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/css/bootstrap-combined.min.css" rel="stylesheet">
-	<!-- <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/js/bootstrap.min.js"></script> -->    
+    <title>Facebook Troller</title>
+    <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
  	<script src="http://code.jquery.com/jquery-latest.js"></script>
+    <script src="js/bootstrap.min.js"></script>
  	<script src="/js/knockout-2.2.0.js"></script>
  	<script src="/js/facebook-proxy.js"></script>
  	<script src="/js/troller.js"></script>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+	<meta content="utf-8" http-equiv="encoding">	
   </head>
-
   <body>
+<%
+	String perms = "user_photos,user_location,user_videos,publish_actions,user_actions.news,user_status,user_relationships,user_birthday,user_likes,friends_photos,friends_birthday,friends_relationships,friends_likes,user_subscriptions,friends_groups,friends_relationships,friends_activities,friends_location,friends_videos,friends_status,photo_upload,read_friendlists,manage_friendlists,publish_stream,read_stream,read_insights";
+%>
 	<div id="fb-root"></div>
-	<fb:login-button autologoutlink="true" perms="<%= perms %>" size="large"></fb:login-button>
-
+	<div class="container">
+		<div class="row">
+			<div class="span2">
+				<fb:login-button autologoutlink="true" perms="<%= perms %>" size="large"></fb:login-button>
+			</div>
+			<div class="span3">
+				<button class="btn btn-warning" id="reload">Reload facebook data</button>
+			</div>			
+			<div class="span8">
+				<span id="login_user"></span>
+			</div>
+		</div>
+		<div class="row">
+			<table class="table table-bordered table-hover">
+			    <thead>
+			        <tr>
+			        	<th>Id</th>
+			        	<th>Type</th>
+			        	<th>Attribution</th>
+			        	<th>Action links</th>
+			        	<th>Message</th>
+			        	<th>Link</th>
+			        	<th>Created time</th>
+			        	<th>Owner id</th>
+			        	<th>Description</th>
+			        	<th>Tags</th>
+			        	<th>Comments</th>
+			        	<th>Likes</th>
+			        </tr>
+			    </thead>
+			    <tbody data-bind="foreach: posts">
+			        <tr>
+			            <td data-bind="text: post_id"></td>
+			            <td data-bind="text: type"></td>
+			            <td data-bind="text: attribution"></td>
+			            <td data-bind="text: action_links"></td>
+			            <td data-bind="text: message"></td>
+			            <td data-bind="text: permalink"></td>
+			            <td data-bind="text: created_time"></td>
+			            <td data-bind="text: actor_id"></td>
+			            <td data-bind="text: description"></td>
+			            <td data-bind="text: description_tags"></td>
+			            <td data-bind="text: comments"></td>
+			            <td data-bind="text: likes"></td>
+			        </tr>
+			    </tbody>
+			</table>
+		</div>
+	</div>
+	
 	<script>
 	  window.fbAsyncInit = function() {
 	    // init the FB JS SDK
@@ -38,8 +84,11 @@
 	    function sendAccessToken(response) {
 	    	var accessToken = fbProxy.getAccessToken(response);
 			if (accessToken) {
-				//console.log("Access token " + accessToken);
-				troller.sendToken(accessToken, troller.logger);
+				//troller.sendToken(accessToken, troller.logger);
+				troller.getData(accessToken, function(data) {
+				    ko.applyBindings({posts: data});
+				});
+
 			} else {
 				console.log("User facebook session not valid... Please use link above to login / give permissions!");
 			}

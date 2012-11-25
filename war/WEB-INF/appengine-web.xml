@@ -34,5 +34,6 @@
 	    <include path="/html/**.html" />
 	    <include path="/css/**.css" />
 	    <include path="/js/**.js" />
+	    <include path="/img/**.**" />
 	</static-files>
 </appengine-web-app>
