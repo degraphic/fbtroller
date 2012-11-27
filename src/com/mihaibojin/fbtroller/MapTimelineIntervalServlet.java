@@ -75,6 +75,7 @@ public class MapTimelineIntervalServlet extends HttpServlet {
 		String key = "token_" + access_token;
 		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
 	    byte[] value = (byte[]) syncCache.get(key); // read from cache
+		log.warning("KEY " + key);
 	    if (value == null) {
 	    	// access_token is not valid anymore; stop execution
 	    	throw new Exception("Access token error");

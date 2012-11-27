@@ -50,15 +50,8 @@ public class FacebookLoginServlet extends HttpServlet {
 		MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
 		String key = "token_" + access_token;
 		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
-	    byte[] value = (byte[]) syncCache.get(key); // read from cache
-	    value = "1".getBytes();
+	    byte[] value = "1".getBytes(); // read from cache
 	    syncCache.put(key, value); // populate cache
-	    if (value == null) {
-	      // get value from other source
-	      // ........
-
-	      syncCache.put(key, value); // populate cache
-	    }		
 	}
 	
 	public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -71,8 +64,9 @@ public class FacebookLoginServlet extends HttpServlet {
 			// get user's UID and NAME
 			String query = "SELECT uid, username, pic_square, birthday_date, sex, name FROM user WHERE uid=me()";
 			List<JsonObject> queryResults = facebookClient.executeQuery(query, JsonObject.class);
-
-
+			
+			// save token to DB
+			login();
 			
 			if ( 0 < queryResults.size() ) {
 				JsonObject u = queryResults.get(0);
