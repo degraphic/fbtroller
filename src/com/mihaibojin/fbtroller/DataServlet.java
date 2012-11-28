@@ -2,7 +2,6 @@ package com.mihaibojin.fbtroller;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -23,6 +22,7 @@ import com.google.appengine.api.datastore.Query.FilterPredicate;
 import com.google.appengine.api.datastore.Query.SortDirection;
 import com.google.appengine.api.datastore.QueryResultList;
 import com.google.appengine.api.datastore.Text;
+import com.mihaibojin.ds.Memcache;
 import com.restfb.DefaultFacebookClient;
 import com.restfb.FacebookClient;
 import com.restfb.exception.FacebookException;
@@ -33,21 +33,39 @@ public class DataServlet extends HttpServlet {
 	private String access_token;
 	FacebookClient facebookClient;
 	
+	private static Integer MAX_LIMIT = new Integer(300);
+	
 	private static final Logger log = Logger.getLogger(DataServlet.class.getName());
+	private static Memcache cache = Memcache.getInstance();
 	
 	public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
 		access_token = req.getParameter("token");
 
+		// check if access_token is allowed to run
+		String cacheKey = "token_" + access_token;
+		log.info(cacheKey);
+		cache = Memcache.getInstance();
+	    byte[] value = cache.get(cacheKey);
+	    if (value == null) {
+	    	// access_token is not valid anymore; stop execution
+	    	log.warning("Access token invalid... cannot retrieve user data!");
+
+	    	// set 404 header
+			resp.setStatus(404);
+	    	
+			return;
+	    }
+		
 		// Get offset / set default offset
 		String offset = req.getParameter("offset");
 		if (null == offset) {
 			offset = "0";
 		}
 
-		// Get limit / set default limit to 10
+		// Get limit / set default limit
 		String limit = req.getParameter("limit");
-		if (null == limit || Integer.valueOf(limit) > 500) {
-			limit = "10";
+		if (null == limit || Integer.valueOf(limit) > MAX_LIMIT) {
+			limit = MAX_LIMIT.toString();
 		}
 
 		// create datastore query
@@ -55,6 +73,7 @@ public class DataServlet extends HttpServlet {
 		FetchOptions fetchOptions = FetchOptions.Builder.withOffset(Integer.valueOf(offset)).limit(Integer.valueOf(limit));
 		
 		try {
+			// init facebook client
 			facebookClient = new DefaultFacebookClient(access_token);		
 			
 			// get user's UID and NAME
@@ -65,11 +84,11 @@ public class DataServlet extends HttpServlet {
 				JsonObject u = queryResults.get(0);
 				Integer uid = (Integer)u.get("uid");
 				
-				// create query to retrieve user's posts and sort by creation time descending 
+				// create query to retrieve user's posts and sort by record creation time 
 				Filter filter = new FilterPredicate("uid", Query.FilterOperator.EQUAL, Integer.toString(uid));
 				Query q = new Query("Posts")
 						.setFilter(filter)
-						.addSort("created_time", SortDirection.DESCENDING);
+						.addSort("record_time", SortDirection.ASCENDING);
 				PreparedQuery pq = datastore.prepare(q);
 			    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
 			    
@@ -91,9 +110,10 @@ public class DataServlet extends HttpServlet {
 				resp.getWriter().println(mapper.writeValueAsString(data));
 			}
 		} catch (FacebookException e) {
-			// error
-			resp.setContentType("application/json");
-			resp.getWriter().println("{\"result\": \"error\", \"message\": \"Cannot retrieve user data\"}");
+	    	// access_token is not valid anymore; log error and return 404
+	    	log.warning("Access token invalid... cannot retrieve user data!");
+	    	
+			resp.setStatus(404);
 		}
 	}
 

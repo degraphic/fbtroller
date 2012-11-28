@@ -71,11 +71,13 @@ var Troller = function($, FB, fbProxy, perms) {
         fbProxy.isLoggedIn(function (accessToken) {
             //if logged in, do logout
             if (accessToken) {
+		console.log("logged in");
         	FB.api('/me', function(response) {
         	    setLogout(response.id, response.first_name, accessToken);
         	});
         	
             } else {
+		console.log("logged out");
         	setLogin();
             }
         });
@@ -98,8 +100,11 @@ var Troller = function($, FB, fbProxy, perms) {
 		} else {
 		    FB.login(function(response) {
 			if (response.authResponse) {
-			    FB.api('/me', function(response) {
-				setLogin(response.uid, response.first_name);
+			    self.logout(response.access_token, function () {
+				    FB.api('/me', function(response) {
+					console.log("logged in", response);
+					setLogin(response.uid, response.first_name);
+				    });
 			    });
 
 			} else {
@@ -107,7 +112,7 @@ var Troller = function($, FB, fbProxy, perms) {
 			}
 		    }, {scope : perms});
 		}		
-	    })
+	    });
 	});
 	
 	// bind reload button

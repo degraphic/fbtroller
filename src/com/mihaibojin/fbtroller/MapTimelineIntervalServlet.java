@@ -4,7 +4,6 @@ import static com.google.appengine.api.taskqueue.TaskOptions.Builder.withUrl;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.servlet.http.*;
@@ -15,12 +14,10 @@ import com.google.appengine.api.datastore.Entity;
 import com.google.appengine.api.datastore.EntityNotFoundException;
 import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
-import com.google.appengine.api.memcache.ErrorHandlers;
-import com.google.appengine.api.memcache.MemcacheService;
-import com.google.appengine.api.memcache.MemcacheServiceFactory;
 import com.google.appengine.api.taskqueue.Queue;
 import com.google.appengine.api.taskqueue.QueueFactory;
 import com.google.appengine.api.taskqueue.TaskOptions.Method;
+import com.mihaibojin.ds.Memcache;
 import com.restfb.DefaultFacebookClient;
 import com.restfb.FacebookClient;
 import com.restfb.exception.FacebookOAuthException;
@@ -32,92 +29,72 @@ public class MapTimelineIntervalServlet extends HttpServlet {
 	private Long uid;
 	FacebookClient facebookClient;
 	private final String EntityKey = "Users";
+	private final Long MAP_INTERVAL = new Long(86400*21); // maximum of 21 days
 	
 	private static final Logger log = Logger.getLogger(FacebookLoginServlet.class.getName());
+	private static final Memcache cache = Memcache.getInstance();
 
 	// returns true if timeline events still exist
 	private boolean hasData(long time)
 	{
 		boolean result = false;
 		
-		try {
-			// check if user has data for specified time
-			String query = String.format("SELECT post_id, filter_key, attribution, action_links, message, permalink, type, created_time, actor_id, target_id, privacy, description, description_tags, comments, likes FROM stream WHERE source_id=me() and created_time <= %s limit 1", String.valueOf(time));
-			//log.severe("Executing: " + query);
-			List<JsonObject> queryResults = facebookClient.executeQuery(query, JsonObject.class);
-			//log.severe(String.format("size: %d", queryResults.size()));
-			
-			if (0 < queryResults.size()) {
-				result = true;
-			}
-		} catch (FacebookOAuthException e) {
-			// query failed
-			if (190 == e.getErrorCode()) {
-				// remove access_token from memcache, preventing jobs to run
-				MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
-				String key = "token_" + access_token;
-				syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
-			    syncCache.delete(key);
-			}
+		// check if user has data for specified time
+		String query = String.format("SELECT post_id, filter_key, attribution, action_links, message, permalink, type, created_time, actor_id, target_id, privacy, description, description_tags, comments, likes FROM stream WHERE source_id=me() and created_time <= %s limit 1", String.valueOf(time));
+		//log.severe("Executing: " + query);
+		List<JsonObject> queryResults = facebookClient.executeQuery(query, JsonObject.class);
+		//log.severe(String.format("size: %d", queryResults.size()));
+		
+		if (0 < queryResults.size()) {
+			result = true;
 		}
 		
 		return result;
 	}
 	
 	// find first post of user using a breadth first search
-	private long process(Entity user) throws Exception
+	private long process()
 	{
-		// get access token and uid
-		access_token = (String)user.getProperty("access_token");
-		uid = (Long)user.getProperty("uid");
-		
-		MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
-		String key = "token_" + access_token;
-		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
-	    byte[] value = (byte[]) syncCache.get(key); // read from cache
-		log.warning("KEY " + key);
-	    if (value == null) {
-	    	// access_token is not valid anymore; stop execution
-	    	throw new Exception("Access token error");
-	    }	
-	    
-	    
-		// initialize facebook client
-		facebookClient = new DefaultFacebookClient(access_token);		
-		
 		long currentTime = (new java.util.Date()).getTime()/1000;
 		int interval = 31104000;
 		long min = 0;
+		@SuppressWarnings("unused")
 		long max = 311040000; // 10 years
 		long lastTime = currentTime;
 		long lastSend = currentTime;
 		
+		/**
+		 * Split interval into binary trees and start retrieving data as soon as a definite interval is discovered
+		 */
 		while (true) {
 			long i = min;
 			
+			// check for existence of data
 			while(true) {
 				i=i+interval;
 				long checkTime = currentTime - i;
 				boolean ok = hasData(checkTime);
 				
+				// if has data, start retrieving it
 				if (ok) {
 					// last substract
 					min = i;
-					
+
 					// start feeding parsing events into queue
 					feedData(lastSend, checkTime+1);
 					lastSend = checkTime;
-					
-					//log.severe(String.format("Has data for %d", checkTime));
+
+				// if it doesn't have data, halven the interval step and try again from last existence point
 				} else {
 					max = i;
 					interval = interval/2;
 					lastTime = checkTime;
-					//log.severe(String.format("Does not have data for %d", checkTime));
+					
 					break;
 				}
 			}
 			
+			// stop when delta is smaller than 1 second
 			if (interval <= 1) {
 				break;
 			}
@@ -127,20 +104,26 @@ public class MapTimelineIntervalServlet extends HttpServlet {
 		feedData(lastSend, lastTime);
 		
 		// minimum time stamp for events
-		log.severe(String.format("Last timestamp %d", lastTime));
+		log.info(String.format("Last timestamp for %d: %d", uid, lastTime));
 		
 		return lastTime;
 	}
 	
-	// feed intervals of data into spider
+	/**
+	 * Feed intervals of data to spider queue
+	 * @param startTime
+	 * @param endTime
+	 */
 	private void feedData(long startTime, long endTime)
 	{
 		long timeCounter = startTime;
 		long newTime = timeCounter;
-		log.severe(String.format("Feeding data for %d - %d", startTime, endTime));
+		log.info(String.format("Feeding data for user %d between %d and %d", uid, startTime, endTime));
 		
+		// ensure a maximum number of days is defined so we won't run into facebook's limitations
 		while (timeCounter > endTime) {
-			newTime = timeCounter - 86400*21; // initial split of 21 day chunks
+			// decrement lower limit of interval
+			newTime = timeCounter - MAP_INTERVAL;
 			
 			// add time chunk to timeline map queue
 			Queue queue = QueueFactory.getQueue("timeline-map");
@@ -157,25 +140,50 @@ public class MapTimelineIntervalServlet extends HttpServlet {
 	
 	// GET request endpoint
 	public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		// retrieve user's key
 		String key = req.getParameter("key");
 
+		// initialize datastore
+		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+        Key usersKey = KeyFactory.createKey(EntityKey, key);
+	    
 		try {
-			DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	        Key usersKey = KeyFactory.createKey(EntityKey, key);
+			// retrieve user record from datastore
 			Entity user = datastore.get(usersKey);
 			
-			// process user's wall posts
-			process(user);
+			// get access token and uid
+			access_token = (String)user.getProperty("access_token");
+			uid = (Long)user.getProperty("uid");
+
+			// determine if access_token is valid
+		    byte[] value = cache.get("token_" + access_token);
+		    if (value == null) {
+		    	// access_token is not valid anymore; stop execution
+		    	throw new Exception("Access token invalid... stopping timeline map process!");
+		    }	
+			
+			// initialize facebook client
+			facebookClient = new DefaultFacebookClient(access_token);		
+			
+			// process user's timeline posts
+			process();
 						
 		} catch (EntityNotFoundException e) {
-			// user not already there
+			// user not in database
+			log.warning(e.toString());
+			
+		} catch (FacebookOAuthException e) {
+			// facebook query failed, delete token from DB
+			log.warning(e.toString());
+			
+			if (190 == e.getErrorCode()) {
+			    cache.delete("token_" + access_token);
+			}
+			
 		} catch (Exception e) {
-			// access_token error
-			log.severe("Access token error");
+			// wrong access token
+			log.warning(e.toString());
 		}
-		
-		resp.setContentType("text/plain");
-		resp.getWriter().println(key);
 
 	}
 

@@ -3,9 +3,7 @@ package com.mihaibojin.fbtroller;
 import static com.google.appengine.api.taskqueue.TaskOptions.Builder.withUrl;
 
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.List;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.servlet.http.*;
@@ -18,12 +16,10 @@ import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
 import com.google.appengine.api.datastore.Text;
 import com.google.appengine.api.datastore.Transaction;
-import com.google.appengine.api.memcache.ErrorHandlers;
-import com.google.appengine.api.memcache.MemcacheService;
-import com.google.appengine.api.memcache.MemcacheServiceFactory;
 import com.google.appengine.api.taskqueue.Queue;
 import com.google.appengine.api.taskqueue.QueueFactory;
 import com.google.appengine.api.taskqueue.TaskOptions.Method;
+import com.mihaibojin.ds.Memcache;
 import com.restfb.DefaultFacebookClient;
 import com.restfb.FacebookClient;
 import com.restfb.exception.FacebookOAuthException;
@@ -36,21 +32,31 @@ public class TimelineSpiderServlet extends HttpServlet {
 	private String uid;
 	FacebookClient facebookClient;
 	private final String EntityKey = "Posts";
+	private final Integer MAX_RECORDS = new Integer(300);
 	
 	private static final Logger log = Logger.getLogger(FacebookLoginServlet.class.getName());
+	private static final Memcache cache = Memcache.getInstance();
 	
+	/**
+	 * Store list of user posts to the database
+	 * @param queryResults
+	 * @param fetchTime
+	 */
 	private void storeData(List<JsonObject> queryResults, Long fetchTime)
 	{
 		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
 		
 		for (JsonObject row : queryResults) {
 			// define unique key and create new entity for storing it in the database
-			String recordKey = "post-" + uid + "-" + row.get("post_id");
+			String postId = (String)row.get("post_id");
+			String recordKey = "post-" + uid + "-" + postId;
 	        Key datastoreKey = KeyFactory.createKey(EntityKey, recordKey);
 			Entity postData = new Entity(EntityKey, recordKey);
 			
+			// set entity values
+			postData.setProperty("record_time", (new java.util.Date()).getTime()); // record creation time
 			postData.setProperty("uid", uid);
-			postData.setProperty("post_id", row.get("post_id"));
+			postData.setProperty("post_id", postId);
 			postData.setProperty("created_time", row.get("created_time"));
 			postData.setProperty("actor_id", row.get("actor_id"));
 			postData.setUnindexedProperty("data", new Text(row.toString(4)));
@@ -63,10 +69,13 @@ public class TimelineSpiderServlet extends HttpServlet {
 					// try to find key in database
 					datastore.get(datastoreKey);
 
+					// @TODO: persist values between records / retrieve from above and save into postData
+					
 					// if key was found, exception is not thrown
 					datastore.delete(datastoreKey);
 				} catch (EntityNotFoundException e) {
-					// key not already in database
+					// key not already in database, new user
+					log.info(String.format("Post %d for %d already in datastore", postId, uid));
 				} 
 				
 				// save user data to data store
@@ -87,54 +96,53 @@ public class TimelineSpiderServlet extends HttpServlet {
 	public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
 		access_token = req.getParameter("access_token");
 		uid = req.getParameter("uid");
-		facebookClient = new DefaultFacebookClient(access_token);
 		Long endTime = Long.valueOf(req.getParameter("endTime"));
 		Long startTime = Long.valueOf(req.getParameter("startTime"));
 		Long queryTime = (new java.util.Date()).getTime();
 
 		// check if access_token is allowed to run
-		MemcacheService syncCache = MemcacheServiceFactory.getMemcacheService();
-		syncCache.setErrorHandler(ErrorHandlers.getConsistentLogAndContinue(Level.INFO));
-		String key = "token_" + access_token;
-	    byte[] value = (byte[]) syncCache.get(key); // read from cache
+		String cacheKey = "token_" + access_token;
+	    byte[] value = cache.get(cacheKey);
 	    if (value == null) {
 	    	// access_token is not valid anymore; stop execution
-			resp.setContentType("application/json");
-			resp.getWriter().println("{\"result\": \"access_token error\"}");
+	    	log.warning("Access token invalid... stopping timeline map process!");
+	    	
 			return;
 	    }	
 
+	    // define data retrieval query
+		facebookClient = new DefaultFacebookClient(access_token);
 		String query = String.format("SELECT post_id, app_id, app_data, attachment, impressions, place, tagged_ids, message_tags, attribution, filter_key, attribution, action_links, message, permalink, type, created_time, actor_id, target_id, privacy, description, description_tags, comments, likes FROM stream WHERE source_id=me() AND created_time >= %s AND created_time <= %s LIMIT 500", String.valueOf(startTime), String.valueOf(endTime));
 		List<JsonObject> queryResults = null;
+		
 		try {
 			queryResults = facebookClient.executeQuery(query, JsonObject.class);
-			log.severe(String.format("Retrieving data between: %d - %d; %d records", startTime, endTime, queryResults.size()));
+			log.info(String.format("Retrieved data for %d between: %d - %d; got %d records", uid, startTime, endTime, queryResults.size()));
 			
 		} catch (FacebookResponseStatusException e) {
-			log.severe(String.format("Facebook exception for %d - %d: %s", startTime, endTime, e.getMessage()));
+			// facebook query failed, log error - probably a throttling issue
+			log.severe(String.format("Facebook exception for %d - %d: %s", startTime, endTime, e.toString()));
+
+			// set response status to 404 so query can be retried
+			resp.setStatus(404);
+			return;
 			
 		} catch (FacebookOAuthException e) {
-			// query failed
+			// query failed because of invalid 
 			if (190 == e.getErrorCode()) {
 				// remove access_token from memcache, preventing jobs to run
-			    syncCache.delete(key);
+			    cache.delete(cacheKey);
 			}			
 		}
 
-		// if query failed, do not proceed with saving to datastore
-		if (null == queryResults) {
-			resp.setStatus(404);
-			return;
-		}
-		
-		// if querySize is at least 50, response might have been limited
-		// additional split is required; if time difference is smaller than 3, can't split anymore 
-		if (300 < queryResults.size() && endTime - startTime > 2) {
+		// if querySize is at least MAX_RECORDS, response might have been limited
+		// additional split is required; if time difference is smaller than 3 seconds, can't split anymore 
+		if (MAX_RECORDS < queryResults.size() && endTime - startTime > 2) {
 			// split into half intervals
 			long split = endTime - (endTime - startTime)/2;
-			log.severe(String.format("Subsplitting %d records: %d - %d at %d", queryResults.size(), startTime, endTime, split));
+			log.info(String.format("Subsplitting %d records for %d: %d - %d at %d", queryResults.size(), uid, startTime, endTime, split));
 			
-			// add time chunk to timeline map queue
+			// add time chunks to timeline map queue
 			Queue queue = QueueFactory.getQueue("timeline-map");
 			
 		    queue.add(withUrl("/timeline-spider").param("access_token", access_token)
@@ -142,24 +150,25 @@ public class TimelineSpiderServlet extends HttpServlet {
 		    									 .param("endTime", endTime.toString())
 		    								  	 .param("startTime", Long.toString(split+1))
 		    								  	 .method(Method.GET));
+		    
 		    queue.add(withUrl("/timeline-spider").param("access_token", access_token)
 												 .param("uid", uid)
 												 .param("endTime", Long.toString(split))
 											  	 .param("startTime", startTime.toString())
 											  	 .method(Method.GET));
 		    
-		    // correct response
+		    // set correct response
 			resp.setContentType("application/json");
 			resp.getWriter().println("{\"result\": \"subsplit\"}");
 			
-		// add data to the datastore
+		// if response size is less than MAX_RECORDS, add data to the datastore
 		} else {
-			log.severe(String.format("Saving %d records to datastore (%d, %d)", queryResults.size(), startTime, endTime));
+			log.info(String.format("Saving %d records for %d to datastore (%d, %d)", queryResults.size(), uid, startTime, endTime));
 			
 			// store data to database
 			storeData(queryResults, queryTime);
 			
-		    // correct response
+		    // set correct response
 			resp.setContentType("application/json");
 			resp.getWriter().println("{\"result\": \"ok\"}");
 		}
